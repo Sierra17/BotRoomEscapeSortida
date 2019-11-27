@@ -45,16 +45,19 @@ def distance_word(word1, word2):
     return sum
 
 
+def rgb2gray(rgb):
+    return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
+
 # Funció per distorsionar la imatge.
 def distort(img, grau):
     # Convertir la imatge en una matriu per poder distorsionar-la.
     m = np.asarray(img)
+    img2d = rgb2gray(m)
+    m = np.asarray(img2d)
 
-    plt.plot(m)
-
-    m2 = np.zeros((img.size[0], img.size[1]))
-    width = img.size[0]
-    height = img.size[1]
+    m2 = np.zeros((img2d.shape[0], img2d.shape[1]), dtype=np.uint8)
+    width = img2d.shape[0]
+    height = img2d.shape[1]
 
     A = m.shape[0] / 3.0
     w = 1.0 / m.shape[1]
@@ -62,14 +65,10 @@ def distort(img, grau):
     # Funció lambda per fer un shift dels píxels.
     shift = lambda x: A * np.sin(2.0*np.pi*x * w)
 
-    print("DONE\n")
-
     for i in range(m.shape[0]):
-        print(int(shift(i)))
         m2[:,i] = np.roll(m[:,i], int(shift(i)))
 
     img2 = Image.fromarray(np.uint8(m2))
-
     return img2
 
 
