@@ -4,6 +4,7 @@ from telegram.ext import Updater
 from telegram.ext import CommandHandler
 
 import numpy as np
+from scipy import signal
 
 # Importa l'API pel tractament d'arxius bytes, com ara imatges.
 from PIL import Image
@@ -13,13 +14,16 @@ from io import BytesIO
 # Importa el modul per el seguiment de la sessio del bot.
 import logging
 
+# Importa el modul per treure accents
+import unidecode
+
 # Configurem el seguiment de la sessio del bot.
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
 # Contrasenyes per debloquejar els misteris.
-password = 'LOMOQUESO'
+password = 'ESTEFANÍA'
 pass_len = len(password)
 answer = "87"
 
@@ -27,7 +31,7 @@ answer = "87"
 Riddle_URL = 'https://i.stack.imgur.com/CT56W.jpg'
 response = requests.get(Riddle_URL)
 imatge = Image.open(BytesIO(response.content))
-Answer_URL = 'https://elcaso.elnacional.cat/uploads/s1/67/67/92/rosali-a_1_645x451.jpeg'
+Answer_URL = 'https://i.imgur.com/c4qfspT.png'
 response2 = requests.get(Answer_URL)
 imatge_solucio = Image.open(BytesIO(response2.content))
 
@@ -35,16 +39,14 @@ imatge_solucio = Image.open(BytesIO(response2.content))
 fase1 = True
 
 # Respostes del Sergio com a pistes de la contrasenya.
-respostes = {0 : "¿Qué quieres chucky?",
-                1 : "4 Euros chucky (Mirada impasible)",
-                2 : "Se nos ha acabado el pan especial",
-                3 : "Venga Luis espabila!",
-                4 : "Rubio, que te saco el cuchillo",
-                5 : "A ver Vicente, que no te oigo",
-                6 : "Pero tú eres tonto, que no tengo todo el día",
-                7 : "A ver Antonia, tú qué quieres?",
-                8 : "No tenéis ni idea de jugar al tute, ya os enseñaré algún día",
-                9 : "Luis, uno con queso!",}
+respostes = {	
+				0 : "Chicos, hay más imágenes.",
+				1 : "No la conozco",
+				2 : "No puedo, no quiero ver más",
+				3 : "Yo es que la tengo en un 'pedastal'",
+				4 : "Tengo palpitaciones en el nabo",
+				5 : "No lo puedo ver, le estoy cogiendo una 'rítia'..."
+			}
 iterator = 0
 
 
@@ -59,28 +61,31 @@ def start(bot, update, user_data):
 
 
 def distance_word(password, attempt):
-    sum = 0.0
-    n = len(attempt)
-    m = len(password)
-    if n < m:
-        sum += (m - n)*26**4
-    for i in range(min(m, n)):
-        sum += float(ord(attempt[i]) - ord(password[i]))**4
-    return sum
+	sum = 0.0
+	n = len(attempt)
+	m = len(password)
+	
+	uattempt = unidecode.unidecode(attempt)
+	upassword = unidecode.unidecode(password)
+	
+	if n < m:
+		sum += (m - n)*26
+	for i in range(min(m, n)):
+		sum += abs(float(ord(uattempt[i]) - ord(upassword[i])))
+	return sum
 
 
 # Funció per convertir les imatges en color a escala de grisos.
 def rgb2gray(rgb):
     return np.dot(rgb[...,:3], [0.2989, 0.5870, 0.1140])
 
-
-# Funció per distorsionar la imatge.
-def distort(img, grau):
+# Sinusoid distorting
+def sindistort(img, grau):
     # Convertir la imatge en una matriu per poder distorsionar-la.
     m = np.asarray(img)
     img2d = rgb2gray(m)
     m = np.asarray(rgb2gray(np.asarray(img)))
-
+	
     m2 = np.zeros((img2d.shape[0], img2d.shape[1]), dtype=np.uint8)
     width = img2d.shape[0]
     height = img2d.shape[1]
@@ -96,6 +101,34 @@ def distort(img, grau):
 
     img2 = Image.fromarray(np.uint8(m2))
     return img2
+
+# Funció per distorsionar la imatge.
+def distort(img, grau):
+    # Convertir la imatge en una matriu per poder distorsionar-la.
+	m = np.asarray(img)
+	img2d = rgb2gray(m)
+	imgmat = np.asarray(rgb2gray(np.asarray(img)))
+	
+	width = img2d.shape[0]
+	height = img2d.shape[1]
+	
+	delta = np.array([[0,0,0],
+	[0,1,0],
+	[0,0,0]])
+	
+	distortion = np.array([[12,-9,4],
+	[-3,-5,13],
+	[9,5,-7]])
+	
+	grau = (grau/100)**2
+	print(grau)
+	
+	filter = delta + grau*distortion
+	
+	conv = signal.convolve2d(imgmat, filter)
+	
+	conv_img = Image.fromarray(np.uint8(conv))
+	return conv_img
 
 
 # Funció per enviar la foto segons si s'ha encertat el codi o no.
@@ -123,15 +156,27 @@ def send_photo(bot, update, word, correct=False, distance = 0):
 def speak(bot, update, user_data):
     try:
         miss_rebut = update.message.text[7:].replace(' ', '') # esborra el "/speak " del començament del missatge.
-        if miss_rebut.upper() == password:
+        if unidecode.unidecode(miss_rebut.upper()) == unidecode.unidecode(password.upper()):
             global fase1
             fase1 = False
             send_photo(bot, update, miss_rebut, True, 0)
+            
+            try:
+                message = "ESTEFANÍAAAAA, pon /speak antes de tu respuesta."
+                bot.send_message(chat_id=update.message.chat_id, text=message)
+            except Exception as e:
+                print(e)
+                bot.send_message(chat_id=update.message.chat_id, text='💣')
+
         elif miss_rebut == answer:
             bio = BytesIO()
             imatge_solucio.save(bio, 'PNG')
             bio.seek(0)
             bot.send_photo(chat_id=update.message.chat_id, photo=bio)
+            
+            message = "Fi de branca. (2/3)"
+            bot.send_message(chat_id=update.message.chat_id, text=message)
+            
         elif not fase1:
             message = "❌"
             bot.send_message(chat_id=update.message.chat_id, text=message)
